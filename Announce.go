@@ -18,6 +18,7 @@ type Announce struct {
 	compact       string
 	supportcrypto bool
 	event         string
+	ip            string
 }
 
 func (a *Announce) GenerateTrackerURL() string {
@@ -35,6 +36,7 @@ func (a *Announce) GenerateTrackerURL() string {
 	fullURL.WriteString("&compact=" + a.Compact())
 	fullURL.WriteString("&supportcrypto=" + a.Supportcrypto())
 	fullURL.WriteString("&event=" + a.Event())
+	fullURL.WriteString("&ip=" + a.Ip())
 
 	return fullURL.String()
 }
@@ -88,4 +90,8 @@ func (a *Announce) Supportcrypto() string {
 
 func (a *Announce) Event() string {
 	return a.event
+}
+
+func (a *Announce) Ip() string {
+	return a.ip
 }

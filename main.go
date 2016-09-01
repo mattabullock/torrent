@@ -42,15 +42,34 @@ func main() {
 
 	stuff := bencode.Decode(body)
 	cast := stuff.(map[string]interface{})
+	//complete, crypto_flags, incomplete, interval, peers
+
 	peers := []byte(cast["peers"].(string))
 
-	fmt.Println(len(peers))
-	for i := 0; i < len(peers); i += 6 {
-		//fmt.Println(peers[i])
-		ip := net.IPv4(peers[i], peers[i+1], peers[i+2], peers[i+3])
-		port := binary.BigEndian.Uint16([]byte{peers[i+4], peers[i+5]})
-		fmt.Println(ip, ":", port)
+	//for i := 0; i < len(peers); i += 6 {
+	i := 0
+	ip := net.IPv4(peers[i], peers[i+1], peers[i+2], peers[i+3])
+	port := binary.BigEndian.Uint16([]byte{peers[i+4], peers[i+5]})
+	addr := net.TCPAddr{
+		IP:   ip,
+		Port: int(port),
 	}
+	laddr := net.TCPAddr{
+		Port: 50005,
+	}
+
+	conn, err := net.DialTCP("tcp", &laddr, &addr)
+	check(err)
+	hello := "19Bittorrent Protocol"
+	_, err = conn.Write([]byte(hello))
+	if err != nil {
+		println("Write to server failed:", err.Error())
+	}
+	result, err := ioutil.ReadAll(conn)
+	check(err)
+
+	fmt.Println(string(result))
+	//}
 }
 
 func check(e error) {
