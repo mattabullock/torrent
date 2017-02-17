@@ -1,9 +1,9 @@
 package main
 
 import (
-	"bencode-go"
 	"encoding/binary"
 	"fmt"
+	"github.com/mattabullock/bencode-go"
 	"io/ioutil"
 	"net"
 	"net/http"
