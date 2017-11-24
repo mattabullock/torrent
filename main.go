@@ -1,23 +1,41 @@
 package main
 
 import (
+	"crypto/sha1"
 	"encoding/binary"
 	"fmt"
 	"github.com/mattabullock/bencode-go"
 	"io/ioutil"
 	"net"
 	"net/http"
+	"net/url"
+	"os"
 	"time"
 )
 
-func main() {
-	var netClient = &http.Client{
-		Timeout: time.Second * 10,
+func sha1sum(s []byte) string {
+	h := sha1.New()
+	h.Write(s)
+	sha1sum := h.Sum(nil)
+	return string(sha1sum)
+}
+
+func ReadMetadata(data []byte) Announce {
+	infoHash := url.QueryEscape(sha1sum(data[239 : len(data)-1]))
+	metadata := bencode.Decode(data).(map[string]interface{})
+	announceURL, ok := metadata["announce"].(string)
+	if !ok {
+		panic(ok)
 	}
 
+	//info := bencode.Encode(metadata["info"].(map[string]interface{}))
+	//fmt.Println(string(info))
+	//infoHash := url.PathEscape(sha1sum(info))
+	//fmt.Println(infoHash)
+
 	ann := Announce{
-		url:           "http://torrent.ubuntu.com:6969/announce",
-		infoHash:      "%90%28%9f%d3M%fc%1c%f8%f3%16%a2h%ad%d85L%853DX",
+		url:           announceURL,
+		infoHash:      infoHash,
 		peerId:        "-TR2840-0p8s3d54k2co",
 		port:          "56026",
 		uploaded:      0,
@@ -30,8 +48,37 @@ func main() {
 		event:         "started",
 	}
 
+	return ann
+}
+
+func GenerateHandshake(data []byte) []byte {
+	infoHash := sha1sum(data[239 : len(data)-1])
+	zeroBytes := []byte("\x00\x00\x00\x00\x00\x00\x00\x00")
+	peerId := []byte("-TR2840-0p8s3d54k2co")
+	var hello []byte
+	hello = append(hello, "\x13BitTorrent protocol"...)
+	hello = append(hello, zeroBytes...)
+	hello = append(hello, []byte(infoHash)...)
+	hello = append(hello, peerId...)
+
+	return hello
+}
+
+func main() {
+
+	args := os.Args[1:]
+
+	// Get data from metadata file
+	data, err := ioutil.ReadFile(args[0])
+	check(err)
+
+	ann := ReadMetadata(data)
+
+	var netClient = &http.Client{
+		Timeout: time.Second * 10,
+	}
+
 	trackerURL := ann.GenerateTrackerURL()
-	fmt.Println(trackerURL)
 	resp, err := netClient.Get(trackerURL)
 
 	check(err)
@@ -40,16 +87,18 @@ func main() {
 		panic(err.Error())
 	}
 
-	stuff := bencode.Decode(body)
-	cast := stuff.(map[string]interface{})
-	//complete, crypto_flags, incomplete, interval, peers
+	trackerResponse := bencode.Decode(body).(map[string]interface{})
+	if val, ok := trackerResponse["failure reason"]; ok {
+		panic(val.(string))
+	}
 
-	peers := []byte(cast["peers"].(string))
+	peers := []byte(trackerResponse["peers"].(string))
 
 	//for i := 0; i < len(peers); i += 6 {
 	i := 0
 	ip := net.IPv4(peers[i], peers[i+1], peers[i+2], peers[i+3])
 	port := binary.BigEndian.Uint16([]byte{peers[i+4], peers[i+5]})
+	fmt.Println(ip)
 	addr := net.TCPAddr{
 		IP:   ip,
 		Port: int(port),
@@ -60,8 +109,8 @@ func main() {
 
 	conn, err := net.DialTCP("tcp", &laddr, &addr)
 	check(err)
-	hello := "19Bittorrent Protocol"
-	_, err = conn.Write([]byte(hello))
+	hello := GenerateHandshake(data)
+	_, err = conn.Write(hello)
 	if err != nil {
 		println("Write to server failed:", err.Error())
 	}
