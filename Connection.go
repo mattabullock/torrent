@@ -2,17 +2,19 @@ package main
 
 import (
 	"fmt"
+	"github.com/libp2p/go-reuseport"
 	"net"
 )
 
 type Connection struct {
 	ip         net.IP
 	port       uint16
-	conn       net.TCPConn
+	conn       net.Conn
 	infoHash   string
 	peerId     string
 	choke      bool
 	interested bool
+	laddr      net.TCPAddr
 }
 
 func (c *Connection) Handshake() {
@@ -40,19 +42,14 @@ func (c *Connection) Unchoke() string {
 }
 
 func (c *Connection) Connect() {
-	addr := net.TCPAddr{
-		IP:   c.ip,
-		Port: int(c.port),
-	}
-	laddr := net.TCPAddr{
-		Port: 50005,
-	}
-	conn, err := net.DialTCP("tcp", &laddr, &addr)
+	conn, err := reuseport.Dial("tcp", "192.168.1.15:50005", c.ip.String()+":"+fmt.Sprint(c.port))
 	check(err)
-	c.conn = *conn
+	c.conn = conn
 }
 
 func (c *Connection) Send(message []byte) {
+	fmt.Println("Sending something to " + c.Ip().String())
+	fmt.Println(message)
 	_, err := c.conn.Write(message)
 	if err != nil {
 		println("Connection failed:", err.Error())
@@ -60,6 +57,7 @@ func (c *Connection) Send(message []byte) {
 }
 
 func (c *Connection) Receive() []byte {
+	fmt.Println("Receiving something from " + c.Ip().String())
 	buf := make([]byte, 1024)
 	// Read the incoming connection into the buffer.
 	_, err := c.conn.Read(buf)
@@ -70,9 +68,14 @@ func (c *Connection) Receive() []byte {
 	return buf
 }
 
-func (c *Connection) Listen(ch chan []byte) []byte {
-	for {
-		response := c.Receive()
-		ch <- response
-	}
+func (c *Connection) Close() {
+	c.conn.Close()
+}
+
+func (c *Connection) Ip() net.IP {
+	return c.ip
+}
+
+func (c *Connection) Port() uint16 {
+	return c.port
 }

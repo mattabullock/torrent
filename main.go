@@ -4,6 +4,7 @@ import (
 	"crypto/sha1"
 	"encoding/binary"
 	"fmt"
+	"github.com/libp2p/go-reuseport"
 	"github.com/mattabullock/bencode-go"
 	"io/ioutil"
 	"net"
@@ -14,6 +15,11 @@ import (
 )
 
 func main() {
+	if len(os.Args) < 2 {
+		fmt.Println("USAGE: torrent <file>")
+		return
+	}
+
 	args := os.Args[1:]
 
 	// Get data from metadata file
@@ -37,32 +43,38 @@ func main() {
 	}
 
 	trackerResponse := bencode.Decode(body).(map[string]interface{})
+	fmt.Println([]byte(trackerResponse["peers"].(string)))
 	if val, ok := trackerResponse["failure reason"]; ok {
 		panic(val.(string))
 	}
 
 	peers := []byte(trackerResponse["peers"].(string))
+	go Listen()
 
-	//for i := 0; i < len(peers); i += 6 {
-	i := 0
-	ip := net.IPv4(peers[i], peers[i+1], peers[i+2], peers[i+3])
-	port := binary.BigEndian.Uint16([]byte{peers[i+4], peers[i+5]})
-	fmt.Println(ip)
+	for i := 0; i < len(peers); i += 6 {
+		ip := net.IPv4(peers[i], peers[i+1], peers[i+2], peers[i+3])
+		port := binary.BigEndian.Uint16([]byte{peers[i+4], peers[i+5]})
 
-	conn := Connection{
-		ip:         ip,
-		port:       port,
-		infoHash:   infoHash,
-		peerId:     peerId,
-		choke:      true,
-		interested: false,
+		conn := Connection{
+			ip:         ip,
+			port:       port,
+			infoHash:   infoHash,
+			peerId:     peerId,
+			choke:      true,
+			interested: false,
+		}
+
+		conn.Connect()
+		conn.Handshake()
+		message := conn.Receive()
+		fmt.Println(message)
+		conn.Close()
+		//ch := make(chan []byte)
+		//go handleResponse(ch)
 	}
+}
 
-	conn.Connect()
-	conn.Handshake()
-	ch := make(chan []byte)
-	go conn.Listen(ch)
-
+func handleResponse(ch chan []byte) {
 	for i := range ch {
 		fmt.Printf("%x\n", i)
 	}
@@ -111,6 +123,42 @@ func ReadMetadata(data []byte) Announce {
 	}
 
 	return ann
+}
+
+func Listen() []byte {
+	l, err := reuseport.Listen("tcp", "192.168.1.15:50005")
+	if err != nil {
+		fmt.Println("Error listening:", err.Error())
+		os.Exit(1)
+	}
+	// Close the listener when the application closes.
+	defer l.Close()
+	fmt.Println("Listening on " + l.Addr().String())
+	for {
+		// Listen for an incoming connection.
+		conn, err := l.Accept()
+		fmt.Println("localAddr: " + conn.LocalAddr().String() + "->" + conn.RemoteAddr().String())
+		if err != nil {
+			fmt.Println("Error accepting: ", err.Error())
+			os.Exit(1)
+		}
+		// Handle connections in a new goroutine.
+		go handleRequest(conn)
+	}
+}
+
+func handleRequest(conn net.Conn) {
+	// Make a buffer to hold incoming data.
+	buf := make([]byte, 1024)
+	// Read the incoming connection into the buffer.
+	_, err := conn.Read(buf)
+	if err != nil {
+		fmt.Println("Error reading:", err.Error())
+	}
+	// Send a response back to person contacting us.
+	fmt.Println("request!")
+	// Close the connection when you're done with it.
+	conn.Close()
 }
 
 func check(e error) {
