@@ -26,7 +26,7 @@ func main() {
 	data, err := ioutil.ReadFile(args[0])
 	check(err)
 
-	ann := ReadMetadata(data)
+	ann, file := ReadMetadata(data)
 	infoHash := sha1sum(data[239 : len(data)-1])
 	peerId := "-TR2840-0p8s3d54k2co"
 	var netClient = &http.Client{
@@ -34,49 +34,62 @@ func main() {
 	}
 
 	trackerURL := ann.GenerateTrackerURL()
-	resp, err := netClient.Get(trackerURL)
 
-	check(err)
-	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		panic(err.Error())
-	}
+	for {
+		resp, err := netClient.Get(trackerURL)
 
-	trackerResponse := bencode.Decode(body).(map[string]interface{})
-	fmt.Println([]byte(trackerResponse["peers"].(string)))
-	if val, ok := trackerResponse["failure reason"]; ok {
-		panic(val.(string))
-	}
-
-	peers := []byte(trackerResponse["peers"].(string))
-	go Listen()
-
-	for i := 0; i < len(peers); i += 6 {
-		ip := net.IPv4(peers[i], peers[i+1], peers[i+2], peers[i+3])
-		port := binary.BigEndian.Uint16([]byte{peers[i+4], peers[i+5]})
-
-		conn := Connection{
-			ip:         ip,
-			port:       port,
-			infoHash:   infoHash,
-			peerId:     peerId,
-			choke:      true,
-			interested: false,
+		check(err)
+		body, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			panic(err.Error())
 		}
 
-		conn.Connect()
-		conn.Handshake()
-		message := conn.Receive()
-		fmt.Println(message)
-		conn.Close()
-		//ch := make(chan []byte)
-		//go handleResponse(ch)
+		trackerResponse := bencode.Decode(body).(map[string]interface{})
+		fmt.Println([]byte(trackerResponse["peers"].(string)))
+		if val, ok := trackerResponse["failure reason"]; ok {
+			panic(val.(string))
+		}
+
+		peers := []byte(trackerResponse["peers"].(string))
+		connections := make(map[string]Connection)
+		//go Listen()
+
+		for i := 0; i < len(peers); i += 6 {
+			ip := net.IPv4(peers[i], peers[i+1], peers[i+2], peers[i+3])
+			port := binary.BigEndian.Uint16([]byte{peers[i+4], peers[i+5]})
+
+			if _, ok := connections[ip.String()]; ok {
+				continue
+			}
+
+			conn := Connection{
+				ip:         ip,
+				port:       port,
+				infoHash:   infoHash,
+				peerId:     peerId,
+				choke:      true,
+				interested: false,
+			}
+
+			connections[ip.String()] = conn
+
+			//go handleConnection(conn)
+			handleConnection(conn, file)
+		}
+		time.Sleep(60 * time.Second)
+	}
+
+	for {
+
 	}
 }
 
-func handleResponse(ch chan []byte) {
-	for i := range ch {
-		fmt.Printf("%x\n", i)
+func handleConnection(conn Connection, file File) {
+	conn.handshake()
+	conn.bitfield(file)
+	for {
+		message = conn.Receive()
+		conn.handleRequest(message)
 	}
 }
 
@@ -87,7 +100,7 @@ func sha1sum(s []byte) string {
 	return string(sha1sum)
 }
 
-func ReadMetadata(data []byte) Announce {
+func ReadMetadata(data []byte) (File, Announce) {
 	infoHash := url.QueryEscape(sha1sum(data[239 : len(data)-1]))
 	metadata := bencode.Decode(data).(map[string]interface{})
 	announceURL, ok := metadata["announce"].(string)
@@ -95,17 +108,17 @@ func ReadMetadata(data []byte) Announce {
 		panic(ok)
 	}
 
-	var have map[string]bool
-	have = make(map[string]bool)
-	pieces := metadata["info"].(map[string]interface{})["pieces"].(string)
-	for i := 0; i < len(pieces); i += 20 {
-		have[pieces[i:i+19]] = false
-	}
+	info := metadata["info"].(map[string]interface{})
+	pieces := info["pieces"].(string)
+	pieceLength := info["piece length"].(string)
+	length := info["length"].(uint64)
 
-	//info := bencode.Encode(metadata["info"].(map[string]interface{}))
-	//fmt.Println(string(info))
-	//infoHash := url.PathEscape(sha1sum(info))
-	//fmt.Println(infoHash)
+	file := File{
+		length:      length,
+		pieceLength: pieceLength,
+		numPieces:   numPieces,
+		pieces:      pieces,
+	}
 
 	ann := Announce{
 		url:           announceURL,
@@ -122,7 +135,7 @@ func ReadMetadata(data []byte) Announce {
 		event:         "started",
 	}
 
-	return ann
+	return ann, file
 }
 
 func Listen() []byte {

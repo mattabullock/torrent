@@ -15,6 +15,7 @@ type Connection struct {
 	choke      bool
 	interested bool
 	laddr      net.TCPAddr
+	peerHave   []bool
 }
 
 func (c *Connection) Handshake() {
@@ -33,12 +34,12 @@ func (c *Connection) Bitfield() string {
 	return ""
 }
 
-func (c *Connection) Choke() string {
-	return ""
+func (c *Connection) toggleChoke() {
+	c.choke = !c.choke
 }
 
-func (c *Connection) Unchoke() string {
-	return ""
+func (c *Connection) toggleInterested() {
+	c.interested = !c.interested
 }
 
 func (c *Connection) Connect() {
@@ -78,4 +79,55 @@ func (c *Connection) Ip() net.IP {
 
 func (c *Connection) Port() uint16 {
 	return c.port
+}
+
+func (c *Connection) handshake() {
+	c.Connect()
+	defer c.Close()
+	c.Handshake()
+	c.Receive()
+	// check correct handshake received
+}
+
+func (c *Connection) bitfield(f File) {
+	bitfield := []byte{5}
+	for i := 0; i < f.numPieces; i += 8 {
+		currentByte := 0
+		for j := 8; j > 0; j-- {
+			if f.havePieces[i] {
+				currentByte *= "1" << j
+			}
+		}
+		bitfield[i/8+1] = currentByte
+	}
+
+	c.Connect()
+	defer c.Close()
+	c.send(bitfield)
+}
+
+func (c *Connection) handleRequest(message []byte) {
+	switch message[0] {
+	case "\x01":
+		//choke
+		break
+	case "\x02":
+
+		break
+	case "\x03":
+
+		break
+	case "\x04":
+
+		break
+	case "\x05":
+
+		break
+	case "\x02":
+
+		break
+	case "\x02":
+
+		break
+	}
 }
