@@ -85,6 +85,8 @@ func main() {
 }
 
 func handleConnection(conn Connection, file File) {
+	conn.Connect()
+	defer conn.Close()
 	conn.handshake()
 	conn.bitfield(file)
 	for {

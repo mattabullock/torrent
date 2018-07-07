@@ -34,12 +34,21 @@ func (c *Connection) Bitfield() string {
 	return ""
 }
 
-func (c *Connection) toggleChoke() {
-	c.choke = !c.choke
+func (c *Connection) Choke() {
+	c.Open()
+	c.choke = true
 }
 
-func (c *Connection) toggleInterested() {
-	c.interested = !c.interested
+func (c *Connection) Unchoke() {
+	c.choke = false
+}
+
+func (c *Connection) Interested() {
+	c.interested = true
+}
+
+func (c *Connection) Uninterested() {
+	c.interested = false
 }
 
 func (c *Connection) Connect() {
@@ -82,8 +91,6 @@ func (c *Connection) Port() uint16 {
 }
 
 func (c *Connection) handshake() {
-	c.Connect()
-	defer c.Close()
 	c.Handshake()
 	c.Receive()
 	// check correct handshake received
@@ -101,33 +108,26 @@ func (c *Connection) bitfield(f File) {
 		bitfield[i/8+1] = currentByte
 	}
 
-	c.Connect()
-	defer c.Close()
 	c.send(bitfield)
 }
 
 func (c *Connection) handleRequest(message []byte) {
 	switch message[0] {
 	case "\x01":
-		//choke
+		c.Choke()
 		break
 	case "\x02":
-
+		c.Unchoke()
 		break
 	case "\x03":
-
+		c.Interested()
 		break
 	case "\x04":
-
+		c.Uninterested()
 		break
 	case "\x05":
-
 		break
-	case "\x02":
-
-		break
-	case "\x02":
-
+	default:
 		break
 	}
 }
