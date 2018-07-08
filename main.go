@@ -45,7 +45,6 @@ func main() {
 		}
 
 		trackerResponse := bencode.Decode(body).(map[string]interface{})
-		fmt.Println([]byte(trackerResponse["peers"].(string)))
 		if val, ok := trackerResponse["failure reason"]; ok {
 			panic(val.(string))
 		}
@@ -87,10 +86,10 @@ func main() {
 func handleConnection(conn Connection, file File) {
 	conn.Connect()
 	defer conn.Close()
-	conn.handshake()
-	conn.bitfield(file)
+	conn.Handshake()
+	conn.Bitfield(file)
 	for {
-		message = conn.Receive()
+		message := conn.Receive()
 		conn.handleRequest(message)
 	}
 }
@@ -102,7 +101,7 @@ func sha1sum(s []byte) string {
 	return string(sha1sum)
 }
 
-func ReadMetadata(data []byte) (File, Announce) {
+func ReadMetadata(data []byte) (Announce, File) {
 	infoHash := url.QueryEscape(sha1sum(data[239 : len(data)-1]))
 	metadata := bencode.Decode(data).(map[string]interface{})
 	announceURL, ok := metadata["announce"].(string)
@@ -112,14 +111,16 @@ func ReadMetadata(data []byte) (File, Announce) {
 
 	info := metadata["info"].(map[string]interface{})
 	pieces := info["pieces"].(string)
-	pieceLength := info["piece length"].(string)
+	pieceLength := info["piece length"].(uint64)
 	length := info["length"].(uint64)
+	numPieces := length / pieceLength
 
 	file := File{
 		length:      length,
 		pieceLength: pieceLength,
 		numPieces:   numPieces,
 		pieces:      pieces,
+		havePieces:  make([]bool, numPieces),
 	}
 
 	ann := Announce{
@@ -148,11 +149,11 @@ func Listen() []byte {
 	}
 	// Close the listener when the application closes.
 	defer l.Close()
-	fmt.Println("Listening on " + l.Addr().String())
+	Log("Listening on " + l.Addr().String())
 	for {
 		// Listen for an incoming connection.
 		conn, err := l.Accept()
-		fmt.Println("localAddr: " + conn.LocalAddr().String() + "->" + conn.RemoteAddr().String())
+		Log("localAddr: " + conn.LocalAddr().String() + "->" + conn.RemoteAddr().String())
 		if err != nil {
 			fmt.Println("Error accepting: ", err.Error())
 			os.Exit(1)
@@ -170,8 +171,6 @@ func handleRequest(conn net.Conn) {
 	if err != nil {
 		fmt.Println("Error reading:", err.Error())
 	}
-	// Send a response back to person contacting us.
-	fmt.Println("request!")
 	// Close the connection when you're done with it.
 	conn.Close()
 }
@@ -180,4 +179,10 @@ func check(e error) {
 	if e != nil {
 		panic(e)
 	}
+}
+
+func Log(message string) {
+	currentTime := time.Now()
+	message = currentTime.Format(time.RFC3339Nano) + " - " + message
+	fmt.Println(message)
 }

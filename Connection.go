@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/libp2p/go-reuseport"
 	"net"
+	"strconv"
 )
 
 type Connection struct {
@@ -30,25 +31,27 @@ func (c *Connection) Handshake() {
 	c.Send(hello)
 }
 
-func (c *Connection) Bitfield() string {
-	return ""
-}
-
 func (c *Connection) Choke() {
-	c.Open()
+	Log("Choke")
 	c.choke = true
+	// TODO: send choke
 }
 
 func (c *Connection) Unchoke() {
+	Log("Unchoke")
 	c.choke = false
+	// TODO: send unchoke
 }
 
 func (c *Connection) Interested() {
+	Log("Interested")
 	c.interested = true
+	// TODO: send interested
 }
 
 func (c *Connection) Uninterested() {
 	c.interested = false
+	// TODO: send uninterested
 }
 
 func (c *Connection) Connect() {
@@ -58,8 +61,8 @@ func (c *Connection) Connect() {
 }
 
 func (c *Connection) Send(message []byte) {
-	fmt.Println("Sending something to " + c.Ip().String())
-	fmt.Println(message)
+	Log("Sending something to " + c.Ip().String())
+	Log(string(message))
 	_, err := c.conn.Write(message)
 	if err != nil {
 		println("Connection failed:", err.Error())
@@ -67,7 +70,7 @@ func (c *Connection) Send(message []byte) {
 }
 
 func (c *Connection) Receive() []byte {
-	fmt.Println("Receiving something from " + c.Ip().String())
+	Log("Receiving something from " + c.Ip().String())
 	buf := make([]byte, 1024)
 	// Read the incoming connection into the buffer.
 	_, err := c.conn.Read(buf)
@@ -96,36 +99,39 @@ func (c *Connection) handshake() {
 	// check correct handshake received
 }
 
-func (c *Connection) bitfield(f File) {
+func (c *Connection) Bitfield(f File) {
+	Log("Creating bitfield.")
+	Log("f.numPieces: " + strconv.FormatUint(f.numPieces, 10) + " - " + strconv.Itoa(len(f.havePieces)))
 	bitfield := []byte{5}
-	for i := 0; i < f.numPieces; i += 8 {
-		currentByte := 0
-		for j := 8; j > 0; j-- {
+	for i := uint64(0); i < f.numPieces; i += 8 {
+		currentByte := byte('\x00')
+		for j := uint32(8); j > 0; j-- {
 			if f.havePieces[i] {
-				currentByte *= "1" << j
+				currentByte += '\x01' << j
 			}
 		}
 		bitfield[i/8+1] = currentByte
 	}
+	Log(string(bitfield))
 
-	c.send(bitfield)
+	c.Send(bitfield)
 }
 
 func (c *Connection) handleRequest(message []byte) {
 	switch message[0] {
-	case "\x01":
+	case '\x01':
 		c.Choke()
 		break
-	case "\x02":
+	case '\x02':
 		c.Unchoke()
 		break
-	case "\x03":
+	case '\x03':
 		c.Interested()
 		break
-	case "\x04":
+	case '\x04':
 		c.Uninterested()
 		break
-	case "\x05":
+	case '\x05':
 		break
 	default:
 		break
