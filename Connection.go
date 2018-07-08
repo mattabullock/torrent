@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"github.com/libp2p/go-reuseport"
 	"net"
-	"strconv"
 )
 
 type Connection struct {
@@ -78,6 +77,8 @@ func (c *Connection) Receive() []byte {
 		fmt.Println("Error reading:", err.Error())
 	}
 
+	fmt.Println(buf)
+
 	return buf
 }
 
@@ -95,14 +96,16 @@ func (c *Connection) Port() uint16 {
 
 func (c *Connection) handshake() {
 	c.Handshake()
-	c.Receive()
-	// check correct handshake received
+	for {
+		buf := c.Receive()
+		// check correct handshake received
+	}
 }
 
 func (c *Connection) Bitfield(f File) {
 	Log("Creating bitfield.")
-	Log("f.numPieces: " + strconv.FormatUint(f.numPieces, 10) + " - " + strconv.Itoa(len(f.havePieces)))
-	bitfield := []byte{5}
+	bitfield := make([]byte, f.numPieces)
+	bitfield[0] = 5
 	for i := uint64(0); i < f.numPieces; i += 8 {
 		currentByte := byte('\x00')
 		for j := uint32(8); j > 0; j-- {
@@ -112,7 +115,6 @@ func (c *Connection) Bitfield(f File) {
 		}
 		bitfield[i/8+1] = currentByte
 	}
-	Log(string(bitfield))
 
 	c.Send(bitfield)
 }
